@@ -1,0 +1,79 @@
+//@version=5
+indicator("Cảnh Đẹp Đà Lạt - Indicator", overlay=true)
+
+// ============================================
+// THÔNG SỐ ĐẦU VÀO (Input Parameters)
+// ============================================
+
+// Moving Average Settings
+fastLength = input.int(9, "Fast MA Length", minval=1)
+slowLength = input.int(21, "Slow MA Length", minval=1)
+maType = input.string("EMA", "MA Type", options=["SMA", "EMA"])
+
+// RSI Settings
+rsiLength = input.int(14, "RSI Length", minval=1)
+rsiOverbought = input.int(70, "RSI Overbought", minval=50, maxval=100)
+rsiOversold = input.int(30, "RSI Oversold", minval=0, maxval=50)
+
+// MACD Settings
+macdFast = input.int(12, "MACD Fast Length", minval=1)
+macdSlow = input.int(26, "MACD Slow Length", minval=1)
+macdSignal = input.int(9, "MACD Signal Length", minval=1)
+
+// ============================================
+// TÍNH TOÁN CHỈ BÁO (Indicator Calculations)
+// ============================================
+
+// Moving Averages
+fastMA = maType == "EMA" ? ta.ema(close, fastLength) : ta.sma(close, fastLength)
+slowMA = maType == "EMA" ? ta.ema(close, slowLength) : ta.sma(close, slowLength)
+
+// RSI
+rsi = ta.rsi(close, rsiLength)
+
+// MACD
+[macdLine, signalLine, histLine] = ta.macd(close, macdFast, macdSlow, macdSignal)
+
+// ============================================
+// ĐIỀU KIỆN TÍN HIỆU (Signal Conditions)
+// ============================================
+
+// Moving Average Crossover
+bullishCrossover = ta.crossover(fastMA, slowMA)
+bearishCrossover = ta.crossunder(fastMA, slowMA)
+
+// RSI Conditions
+rsiOverboughtCondition = rsi > rsiOverbought
+rsiOversoldCondition = rsi < rsiOversold
+
+// MACD Conditions
+macdBullish = macdLine > signalLine and histLine > 0
+macdBearish = macdLine < signalLine and histLine < 0
+
+// Combined Signals
+buySignal = bullishCrossover and rsi < 70 and macdBullish
+sellSignal = bearishCrossover and rsi > 30 and macdBearish
+
+// ============================================
+// VẼ CHỈ BÁO (Plot Indicators)
+// ============================================
+
+// Plot Moving Averages
+plot(fastMA, "Fast MA", color=color.new(color.blue, 0), linewidth=2)
+plot(slowMA, "Slow MA", color=color.new(color.red, 0), linewidth=2)
+
+// Plot Buy/Sell Signals
+plotshape(buySignal, "Buy Signal", shape.triangleup, location.belowbar, 
+          color=color.new(color.green, 0), size=size.small)
+plotshape(sellSignal, "Sell Signal", shape.triangledown, location.abovebar, 
+          color=color.new(color.red, 0), size=size.small)
+
+// Background Color for Trend
+bgcolor(fastMA > slowMA ? color.new(color.green, 95) : color.new(color.red, 95))
+
+// ============================================
+// ALERTS
+// ============================================
+
+alertcondition(buySignal, title="Buy Alert", message="Buy Signal: MA Crossover + RSI + MACD")
+alertcondition(sellSignal, title="Sell Alert", message="Sell Signal: MA Crossover + RSI + MACD")
