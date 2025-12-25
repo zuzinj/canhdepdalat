@@ -42,7 +42,7 @@ bullishCross = ta.crossover(fastMA, slowMA)
 bearishCross = ta.crossunder(fastMA, slowMA)
 
 // Session filter
-inSession = not useSessionFilter or time(timeframe.period, sessionTime)
+inSession = not useSessionFilter or (time(timeframe.period, sessionTime) != 0)
 
 // ============================================================================
 // ENTRY CONDITIONS
@@ -70,10 +70,10 @@ shortTakeProfit = strategy.position_avg_price * (1 - takeProfitPercent / 100)
 
 // Entry orders
 if longCondition
-    strategy.entry("Long", strategy.long, comment="Buy Signal")
+    strategy.entry("Long", strategy.long, qty=riskPerTrade, comment="Buy Signal")
     
 if shortCondition
-    strategy.entry("Short", strategy.short, comment="Sell Signal")
+    strategy.entry("Short", strategy.short, qty=riskPerTrade, comment="Sell Signal")
 
 // Exit orders for long positions
 if strategy.position_size > 0
