@@ -4,7 +4,7 @@
 //@version=5
 strategy("MA Crossover EA", shorttitle="MA Cross EA", overlay=true, 
          initial_capital=10000, default_qty_type=strategy.percent_of_equity, 
-         default_qty_value=10, commission_type=strategy.commission.percent, 
+         commission_type=strategy.commission.percent, 
          commission_value=0.1, slippage=2)
 
 // ============================================================================
@@ -42,7 +42,7 @@ bullishCross = ta.crossover(fastMA, slowMA)
 bearishCross = ta.crossunder(fastMA, slowMA)
 
 // Session filter
-inSession = not useSessionFilter or (time(timeframe.period, sessionTime) != 0)
+inSession = not useSessionFilter or not na(time(timeframe.period, sessionTime))
 
 // ============================================================================
 // ENTRY CONDITIONS
