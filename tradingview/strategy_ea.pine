@@ -110,15 +110,19 @@ shortTakeProfit = useTakeProfit ? close * (1 - takeProfitPercent/100) : na
 // Entry Orders
 if longCondition and strategy.position_size == 0
     strategy.entry("Long", strategy.long, qty=riskPerTrade/100 * strategy.equity / close)
-    if useStopLoss
-        strategy.exit("Long Exit", "Long", stop=longStopLoss, limit=longTakeProfit, 
+    if useStopLoss or useTakeProfit
+        strategy.exit("Long Exit", "Long", 
+                     stop=useStopLoss ? longStopLoss : na, 
+                     limit=useTakeProfit ? longTakeProfit : na, 
                      trail_points=useTrailingStop ? trailingStopPercent/100 * close / syminfo.mintick : na,
                      trail_offset=useTrailingStop ? trailingStopPercent/100 * close / syminfo.mintick * 0.5 : na)
 
 if shortCondition and strategy.position_size == 0
     strategy.entry("Short", strategy.short, qty=riskPerTrade/100 * strategy.equity / close)
-    if useStopLoss
-        strategy.exit("Short Exit", "Short", stop=shortStopLoss, limit=shortTakeProfit,
+    if useStopLoss or useTakeProfit
+        strategy.exit("Short Exit", "Short", 
+                     stop=useStopLoss ? shortStopLoss : na, 
+                     limit=useTakeProfit ? shortTakeProfit : na,
                      trail_points=useTrailingStop ? trailingStopPercent/100 * close / syminfo.mintick : na,
                      trail_offset=useTrailingStop ? trailingStopPercent/100 * close / syminfo.mintick * 0.5 : na)
 
