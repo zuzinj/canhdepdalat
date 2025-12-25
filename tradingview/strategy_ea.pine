@@ -1,0 +1,191 @@
+//@version=5
+strategy("Cảnh Đẹp Đà Lạt - EA Strategy", overlay=true, 
+         initial_capital=10000, 
+         default_qty_type=strategy.percent_of_equity, 
+         default_qty_value=100,
+         commission_type=strategy.commission.percent, 
+         commission_value=0.1,
+         slippage=3)
+
+// ============================================
+// THÔNG SỐ ĐẦU VÀO (Input Parameters)
+// ============================================
+
+// === Moving Average Settings ===
+fastLength = input.int(9, "Fast MA Length", minval=1, group="Moving Average")
+slowLength = input.int(21, "Slow MA Length", minval=1, group="Moving Average")
+maType = input.string("EMA", "MA Type", options=["SMA", "EMA"], group="Moving Average")
+
+// === RSI Settings ===
+rsiLength = input.int(14, "RSI Length", minval=1, group="RSI")
+rsiOverbought = input.int(70, "RSI Overbought", minval=50, maxval=100, group="RSI")
+rsiOversold = input.int(30, "RSI Oversold", minval=0, maxval=50, group="RSI")
+
+// === MACD Settings ===
+macdFast = input.int(12, "MACD Fast Length", minval=1, group="MACD")
+macdSlow = input.int(26, "MACD Slow Length", minval=1, group="MACD")
+macdSignal = input.int(9, "MACD Signal Length", minval=1, group="MACD")
+
+// === Risk Management ===
+useStopLoss = input.bool(true, "Use Stop Loss", group="Risk Management")
+stopLossPercent = input.float(2.0, "Stop Loss %", minval=0.1, maxval=10, step=0.1, group="Risk Management")
+useTakeProfit = input.bool(true, "Use Take Profit", group="Risk Management")
+takeProfitPercent = input.float(4.0, "Take Profit %", minval=0.1, maxval=20, step=0.1, group="Risk Management")
+useTrailingStop = input.bool(false, "Use Trailing Stop", group="Risk Management")
+trailingStopPercent = input.float(1.5, "Trailing Stop %", minval=0.1, maxval=10, step=0.1, group="Risk Management")
+
+// === Position Sizing ===
+riskPerTrade = input.float(100, "Risk Per Trade (%)", minval=1, maxval=100, step=1, group="Position Sizing")
+
+// === Trading Hours ===
+useTimeFilter = input.bool(false, "Use Time Filter", group="Trading Hours")
+startHour = input.int(9, "Start Hour", minval=0, maxval=23, group="Trading Hours")
+endHour = input.int(17, "End Hour", minval=0, maxval=23, group="Trading Hours")
+
+// ============================================
+// TÍNH TOÁN CHỈ BÁO (Indicator Calculations)
+// ============================================
+
+// Moving Averages
+fastMA = maType == "EMA" ? ta.ema(close, fastLength) : ta.sma(close, fastLength)
+slowMA = maType == "EMA" ? ta.ema(close, slowLength) : ta.sma(close, slowLength)
+
+// RSI
+rsi = ta.rsi(close, rsiLength)
+
+// MACD
+[macdLine, signalLine, histLine] = ta.macd(close, macdFast, macdSlow, macdSignal)
+
+// ============================================
+// ĐIỀU KIỆN THỜI GIAN (Time Filter)
+// ============================================
+
+inTimeRange = true
+if useTimeFilter
+    currentHour = hour(time)
+    inTimeRange := currentHour >= startHour and currentHour <= endHour
+
+// ============================================
+// ĐIỀU KIỆN TÍN HIỆU (Signal Conditions)
+// ============================================
+
+// Moving Average Crossover
+bullishCrossover = ta.crossover(fastMA, slowMA)
+bearishCrossover = ta.crossunder(fastMA, slowMA)
+
+// RSI Conditions
+rsiOverboughtCondition = rsi > rsiOverbought
+rsiOversoldCondition = rsi < rsiOversold
+rsiNeutral = rsi > 30 and rsi < 70
+
+// MACD Conditions
+macdBullish = macdLine > signalLine and histLine > 0
+macdBearish = macdLine < signalLine and histLine < 0
+macdCrossoverUp = ta.crossover(macdLine, signalLine)
+macdCrossoverDown = ta.crossunder(macdLine, signalLine)
+
+// Combined Entry Signals
+longCondition = bullishCrossover and rsi < 70 and macdBullish and inTimeRange
+shortCondition = bearishCrossover and rsi > 30 and macdBearish and inTimeRange
+
+// Exit Conditions
+longExitCondition = bearishCrossover or rsiOverboughtCondition or macdCrossoverDown
+shortExitCondition = bullishCrossover or rsiOversoldCondition or macdCrossoverUp
+
+// ============================================
+// QUẢN LÝ RỦI RO (Risk Management)
+// ============================================
+
+// Calculate Stop Loss and Take Profit levels
+longStopLoss = useStopLoss ? close * (1 - stopLossPercent/100) : na
+longTakeProfit = useTakeProfit ? close * (1 + takeProfitPercent/100) : na
+
+shortStopLoss = useStopLoss ? close * (1 + stopLossPercent/100) : na
+shortTakeProfit = useTakeProfit ? close * (1 - takeProfitPercent/100) : na
+
+// ============================================
+// THỰC HIỆN LỆNH (Execute Orders)
+// ============================================
+
+// Entry Orders
+if longCondition and strategy.position_size == 0
+    strategy.entry("Long", strategy.long, qty=riskPerTrade/100 * strategy.equity / close)
+    if useStopLoss
+        strategy.exit("Long Exit", "Long", stop=longStopLoss, limit=longTakeProfit, 
+                     trail_points=useTrailingStop ? trailingStopPercent/100 * close / syminfo.mintick : na,
+                     trail_offset=useTrailingStop ? trailingStopPercent/100 * close / syminfo.mintick * 0.5 : na)
+
+if shortCondition and strategy.position_size == 0
+    strategy.entry("Short", strategy.short, qty=riskPerTrade/100 * strategy.equity / close)
+    if useStopLoss
+        strategy.exit("Short Exit", "Short", stop=shortStopLoss, limit=shortTakeProfit,
+                     trail_points=useTrailingStop ? trailingStopPercent/100 * close / syminfo.mintick : na,
+                     trail_offset=useTrailingStop ? trailingStopPercent/100 * close / syminfo.mintick * 0.5 : na)
+
+// Manual Exit Conditions
+if longExitCondition and strategy.position_size > 0
+    strategy.close("Long", comment="Exit Signal")
+
+if shortExitCondition and strategy.position_size < 0
+    strategy.close("Short", comment="Exit Signal")
+
+// ============================================
+// VẼ CHỈ BÁO (Plot Indicators)
+// ============================================
+
+// Plot Moving Averages
+plot(fastMA, "Fast MA", color=color.new(color.blue, 0), linewidth=2)
+plot(slowMA, "Slow MA", color=color.new(color.red, 0), linewidth=2)
+
+// Plot Entry Signals
+plotshape(longCondition, "Long Entry", shape.triangleup, location.belowbar, 
+          color=color.new(color.green, 0), size=size.normal)
+plotshape(shortCondition, "Short Entry", shape.triangledown, location.abovebar, 
+          color=color.new(color.red, 0), size=size.normal)
+
+// Plot Stop Loss and Take Profit levels
+plot(strategy.position_size > 0 ? longStopLoss : na, "Long SL", color=color.new(color.red, 0), 
+     style=plot.style_linebr, linewidth=2)
+plot(strategy.position_size > 0 ? longTakeProfit : na, "Long TP", color=color.new(color.green, 0), 
+     style=plot.style_linebr, linewidth=2)
+plot(strategy.position_size < 0 ? shortStopLoss : na, "Short SL", color=color.new(color.red, 0), 
+     style=plot.style_linebr, linewidth=2)
+plot(strategy.position_size < 0 ? shortTakeProfit : na, "Short TP", color=color.new(color.green, 0), 
+     style=plot.style_linebr, linewidth=2)
+
+// Background Color for Trend
+bgcolor(fastMA > slowMA ? color.new(color.green, 95) : color.new(color.red, 95))
+
+// Display Position Info
+var table positionTable = table.new(position.top_right, 2, 5, bgcolor=color.new(color.black, 80))
+if barstate.islast
+    table.cell(positionTable, 0, 0, "Position:", text_color=color.white)
+    table.cell(positionTable, 1, 0, strategy.position_size > 0 ? "LONG" : strategy.position_size < 0 ? "SHORT" : "NONE", 
+               text_color=strategy.position_size > 0 ? color.green : strategy.position_size < 0 ? color.red : color.gray)
+    
+    table.cell(positionTable, 0, 1, "Entry Price:", text_color=color.white)
+    table.cell(positionTable, 1, 1, str.tostring(strategy.position_avg_price, "#.##"), text_color=color.white)
+    
+    table.cell(positionTable, 0, 2, "Position Size:", text_color=color.white)
+    table.cell(positionTable, 1, 2, str.tostring(math.abs(strategy.position_size), "#.####"), text_color=color.white)
+    
+    table.cell(positionTable, 0, 3, "Unrealized P/L:", text_color=color.white)
+    table.cell(positionTable, 1, 3, str.tostring(strategy.openprofit, "#.##"), 
+               text_color=strategy.openprofit > 0 ? color.green : strategy.openprofit < 0 ? color.red : color.gray)
+    
+    table.cell(positionTable, 0, 4, "Total P/L:", text_color=color.white)
+    table.cell(positionTable, 1, 4, str.tostring(strategy.netprofit, "#.##"), 
+               text_color=strategy.netprofit > 0 ? color.green : strategy.netprofit < 0 ? color.red : color.gray)
+
+// ============================================
+// ALERTS
+// ============================================
+
+alertcondition(longCondition, title="Long Entry Alert", 
+              message="🟢 LONG Entry Signal\nSymbol: {{ticker}}\nPrice: {{close}}\nTime: {{time}}")
+alertcondition(shortCondition, title="Short Entry Alert", 
+              message="🔴 SHORT Entry Signal\nSymbol: {{ticker}}\nPrice: {{close}}\nTime: {{time}}")
+alertcondition(longExitCondition and strategy.position_size > 0, title="Long Exit Alert", 
+              message="🟡 Exit LONG Position\nSymbol: {{ticker}}\nPrice: {{close}}\nTime: {{time}}")
+alertcondition(shortExitCondition and strategy.position_size < 0, title="Short Exit Alert", 
+              message="🟡 Exit SHORT Position\nSymbol: {{ticker}}\nPrice: {{close}}\nTime: {{time}}")
