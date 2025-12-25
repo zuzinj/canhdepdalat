@@ -1,0 +1,139 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © TradingView Expert Advisor (Strategy)
+
+//@version=5
+strategy("MA Crossover EA", shorttitle="MA Cross EA", overlay=true, 
+         initial_capital=10000, default_qty_type=strategy.percent_of_equity, 
+         default_qty_value=10, commission_type=strategy.commission.percent, 
+         commission_value=0.1, slippage=2)
+
+// ============================================================================
+// INPUT PARAMETERS
+// ============================================================================
+
+// Moving Average Settings
+fastLength = input.int(9, title="Fast MA Length", minval=1, group="Moving Average Settings")
+slowLength = input.int(21, title="Slow MA Length", minval=1, group="Moving Average Settings")
+maType = input.string("EMA", title="MA Type", options=["SMA", "EMA"], group="Moving Average Settings")
+
+// Risk Management Settings
+useStopLoss = input.bool(true, title="Use Stop Loss", group="Risk Management")
+stopLossPercent = input.float(2.0, title="Stop Loss %", minval=0.1, maxval=10, step=0.1, group="Risk Management")
+useTakeProfit = input.bool(true, title="Use Take Profit", group="Risk Management")
+takeProfitPercent = input.float(4.0, title="Take Profit %", minval=0.1, maxval=20, step=0.1, group="Risk Management")
+
+// Position Sizing
+riskPerTrade = input.float(10, title="Risk Per Trade (%)", minval=1, maxval=100, step=1, group="Position Sizing")
+
+// Trading Session Filter
+useSessionFilter = input.bool(false, title="Use Trading Session Filter", group="Session Filter")
+sessionTime = input.session("0930-1600", title="Trading Session", group="Session Filter")
+
+// ============================================================================
+// CALCULATE INDICATORS
+// ============================================================================
+
+// Calculate moving averages
+fastMA = maType == "SMA" ? ta.sma(close, fastLength) : ta.ema(close, fastLength)
+slowMA = maType == "SMA" ? ta.sma(close, slowLength) : ta.ema(close, slowLength)
+
+// Detect crossovers
+bullishCross = ta.crossover(fastMA, slowMA)
+bearishCross = ta.crossunder(fastMA, slowMA)
+
+// Session filter
+inSession = not useSessionFilter or time(timeframe.period, sessionTime)
+
+// ============================================================================
+// ENTRY CONDITIONS
+// ============================================================================
+
+// Long entry condition
+longCondition = bullishCross and fastMA > slowMA and inSession
+// Short entry condition
+shortCondition = bearishCross and fastMA < slowMA and inSession
+
+// ============================================================================
+// CALCULATE STOP LOSS AND TAKE PROFIT
+// ============================================================================
+
+// Calculate stop loss and take profit levels
+longStopLoss = strategy.position_avg_price * (1 - stopLossPercent / 100)
+longTakeProfit = strategy.position_avg_price * (1 + takeProfitPercent / 100)
+
+shortStopLoss = strategy.position_avg_price * (1 + stopLossPercent / 100)
+shortTakeProfit = strategy.position_avg_price * (1 - takeProfitPercent / 100)
+
+// ============================================================================
+// STRATEGY EXECUTION
+// ============================================================================
+
+// Entry orders
+if longCondition
+    strategy.entry("Long", strategy.long, comment="Buy Signal")
+    
+if shortCondition
+    strategy.entry("Short", strategy.short, comment="Sell Signal")
+
+// Exit orders for long positions
+if strategy.position_size > 0
+    if useStopLoss
+        strategy.exit("Long SL/TP", "Long", stop=longStopLoss, limit=useTakeProfit ? longTakeProfit : na)
+    else if useTakeProfit
+        strategy.exit("Long TP", "Long", limit=longTakeProfit)
+
+// Exit orders for short positions
+if strategy.position_size < 0
+    if useStopLoss
+        strategy.exit("Short SL/TP", "Short", stop=shortStopLoss, limit=useTakeProfit ? shortTakeProfit : na)
+    else if useTakeProfit
+        strategy.exit("Short TP", "Short", limit=shortTakeProfit)
+
+// Exit on opposite signal
+if bearishCross and strategy.position_size > 0
+    strategy.close("Long", comment="Exit Long")
+    
+if bullishCross and strategy.position_size < 0
+    strategy.close("Short", comment="Exit Short")
+
+// ============================================================================
+// PLOTTING
+// ============================================================================
+
+// Plot moving averages
+plot(fastMA, title="Fast MA", color=color.blue, linewidth=2)
+plot(slowMA, title="Slow MA", color=color.red, linewidth=2)
+
+// Plot entry signals
+plotshape(longCondition, title="Buy Signal", location=location.belowbar, 
+         color=color.green, style=shape.triangleup, size=size.normal)
+plotshape(shortCondition, title="Sell Signal", location=location.abovebar, 
+         color=color.red, style=shape.triangledown, size=size.normal)
+
+// Plot stop loss and take profit levels
+plot(strategy.position_size > 0 and useStopLoss ? longStopLoss : na, 
+     title="Long Stop Loss", color=color.red, style=plot.style_linebr, linewidth=1)
+plot(strategy.position_size > 0 and useTakeProfit ? longTakeProfit : na, 
+     title="Long Take Profit", color=color.green, style=plot.style_linebr, linewidth=1)
+
+plot(strategy.position_size < 0 and useStopLoss ? shortStopLoss : na, 
+     title="Short Stop Loss", color=color.red, style=plot.style_linebr, linewidth=1)
+plot(strategy.position_size < 0 and useTakeProfit ? shortTakeProfit : na, 
+     title="Short Take Profit", color=color.green, style=plot.style_linebr, linewidth=1)
+
+// Background color for trend
+bgcolor(fastMA > slowMA ? color.new(color.green, 95) : color.new(color.red, 95))
+
+// ============================================================================
+// ALERTS
+// ============================================================================
+
+// Alert conditions
+alertcondition(longCondition, title="Long Entry Alert", 
+              message="MA Crossover EA: BUY Signal - Fast MA crossed above Slow MA")
+alertcondition(shortCondition, title="Short Entry Alert", 
+              message="MA Crossover EA: SELL Signal - Fast MA crossed below Slow MA")
+alertcondition(bearishCross and strategy.position_size > 0, title="Exit Long Alert",
+              message="MA Crossover EA: EXIT LONG - Bearish crossover detected")
+alertcondition(bullishCross and strategy.position_size < 0, title="Exit Short Alert",
+              message="MA Crossover EA: EXIT SHORT - Bullish crossover detected")
