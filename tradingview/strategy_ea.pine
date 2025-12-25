@@ -5,7 +5,8 @@ strategy("Cảnh Đẹp Đà Lạt - EA Strategy", overlay=true,
          default_qty_value=100,
          commission_type=strategy.commission.percent, 
          commission_value=0.1,
-         slippage=3)
+         slippage=3,
+         process_orders_on_close=true)
 
 // ============================================
 // THÔNG SỐ ĐẦU VÀO (Input Parameters)
@@ -35,7 +36,8 @@ useTrailingStop = input.bool(false, "Use Trailing Stop", group="Risk Management"
 trailingStopPercent = input.float(1.5, "Trailing Stop %", minval=0.1, maxval=10, step=0.1, group="Risk Management")
 
 // === Position Sizing ===
-riskPerTrade = input.float(100, "Risk Per Trade (%)", minval=1, maxval=100, step=1, group="Position Sizing")
+positionSizePercent = input.float(100, "Position Size (% of Equity)", minval=1, maxval=100, step=1, group="Position Sizing", 
+                                  tooltip="Percentage of equity to use for each trade. 100% means use all available equity.")
 
 // === Trading Hours ===
 useTimeFilter = input.bool(false, "Use Time Filter", group="Trading Hours")
@@ -109,22 +111,43 @@ shortTakeProfit = useTakeProfit ? close * (1 - takeProfitPercent/100) : na
 
 // Entry Orders
 if longCondition and strategy.position_size == 0
-    strategy.entry("Long", strategy.long, qty=riskPerTrade/100 * strategy.equity / close)
-    if useStopLoss or useTakeProfit
-        strategy.exit("Long Exit", "Long", 
-                     stop=useStopLoss ? longStopLoss : na, 
-                     limit=useTakeProfit ? longTakeProfit : na, 
-                     trail_points=useTrailingStop ? trailingStopPercent/100 * close / syminfo.mintick : na,
-                     trail_offset=useTrailingStop ? trailingStopPercent/100 * close / syminfo.mintick * 0.5 : na)
-
+    strategy.entry("Long", strategy.long, qty=positionSizePercent)
+    
 if shortCondition and strategy.position_size == 0
-    strategy.entry("Short", strategy.short, qty=riskPerTrade/100 * strategy.equity / close)
-    if useStopLoss or useTakeProfit
-        strategy.exit("Short Exit", "Short", 
-                     stop=useStopLoss ? shortStopLoss : na, 
-                     limit=useTakeProfit ? shortTakeProfit : na,
-                     trail_points=useTrailingStop ? trailingStopPercent/100 * close / syminfo.mintick : na,
-                     trail_offset=useTrailingStop ? trailingStopPercent/100 * close / syminfo.mintick * 0.5 : na)
+    strategy.entry("Short", strategy.short, qty=positionSizePercent)
+
+// Exit Orders - Apply after entry to use entry price
+if strategy.position_size > 0 and (useStopLoss or useTakeProfit)
+    var float longEntryPrice = na
+    if strategy.position_size[1] == 0 and strategy.position_size > 0
+        longEntryPrice := strategy.position_avg_price
+    
+    longSL = useStopLoss ? longEntryPrice * (1 - stopLossPercent/100) : na
+    longTP = useTakeProfit ? longEntryPrice * (1 + takeProfitPercent/100) : na
+    trailPoints = useTrailingStop ? longEntryPrice * trailingStopPercent/100 / syminfo.mintick : na
+    trailOffset = useTrailingStop ? trailPoints * 0.5 : na
+    
+    strategy.exit("Long Exit", "Long", 
+                 stop=longSL, 
+                 limit=longTP, 
+                 trail_points=trailPoints,
+                 trail_offset=trailOffset)
+
+if strategy.position_size < 0 and (useStopLoss or useTakeProfit)
+    var float shortEntryPrice = na
+    if strategy.position_size[1] == 0 and strategy.position_size < 0
+        shortEntryPrice := strategy.position_avg_price
+    
+    shortSL = useStopLoss ? shortEntryPrice * (1 + stopLossPercent/100) : na
+    shortTP = useTakeProfit ? shortEntryPrice * (1 - takeProfitPercent/100) : na
+    trailPoints = useTrailingStop ? shortEntryPrice * trailingStopPercent/100 / syminfo.mintick : na
+    trailOffset = useTrailingStop ? trailPoints * 0.5 : na
+    
+    strategy.exit("Short Exit", "Short", 
+                 stop=shortSL, 
+                 limit=shortTP,
+                 trail_points=trailPoints,
+                 trail_offset=trailOffset)
 
 // Manual Exit Conditions
 if longExitCondition and strategy.position_size > 0
