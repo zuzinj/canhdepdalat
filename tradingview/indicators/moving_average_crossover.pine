@@ -1,0 +1,31 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © TradingView Indicator
+
+//@version=5
+indicator("Moving Average Crossover Indicator", shorttitle="MA Cross", overlay=true)
+
+// Input parameters
+fastLength = input.int(9, title="Fast MA Length", minval=1)
+slowLength = input.int(21, title="Slow MA Length", minval=1)
+maType = input.string("SMA", title="MA Type", options=["SMA", "EMA"])
+
+// Calculate moving averages
+fastMA = maType == "SMA" ? ta.sma(close, fastLength) : ta.ema(close, fastLength)
+slowMA = maType == "SMA" ? ta.sma(close, slowLength) : ta.ema(close, slowLength)
+
+// Plot moving averages
+plot(fastMA, title="Fast MA", color=color.blue, linewidth=2)
+plot(slowMA, title="Slow MA", color=color.red, linewidth=2)
+
+// Detect crossovers
+bullishCross = ta.crossover(fastMA, slowMA)
+bearishCross = ta.crossunder(fastMA, slowMA)
+
+// Plot crossover signals
+plotshape(bullishCross, title="Bullish Cross", location=location.belowbar, 
+         color=color.green, style=shape.triangleup, size=size.small)
+plotshape(bearishCross, title="Bearish Cross", location=location.abovebar, 
+         color=color.red, style=shape.triangledown, size=size.small)
+
+// Background color for trend
+bgcolor(fastMA > slowMA ? color.new(color.green, 95) : color.new(color.red, 95))
