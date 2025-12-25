@@ -95,59 +95,48 @@ longExitCondition = bearishCrossover or rsiOverboughtCondition or macdCrossoverD
 shortExitCondition = bullishCrossover or rsiOversoldCondition or macdCrossoverUp
 
 // ============================================
-// QUẢN LÝ RỦI RO (Risk Management)
-// ============================================
-
-// Calculate Stop Loss and Take Profit levels
-longStopLoss = useStopLoss ? close * (1 - stopLossPercent/100) : na
-longTakeProfit = useTakeProfit ? close * (1 + takeProfitPercent/100) : na
-
-shortStopLoss = useStopLoss ? close * (1 + stopLossPercent/100) : na
-shortTakeProfit = useTakeProfit ? close * (1 - takeProfitPercent/100) : na
-
-// ============================================
 // THỰC HIỆN LỆNH (Execute Orders)
 // ============================================
 
 // Entry Orders
 if longCondition and strategy.position_size == 0
-    strategy.entry("Long", strategy.long, qty=positionSizePercent)
+    strategy.entry("Long", strategy.long, qty=positionSizePercent/100 * strategy.equity / close)
     
 if shortCondition and strategy.position_size == 0
-    strategy.entry("Short", strategy.short, qty=positionSizePercent)
+    strategy.entry("Short", strategy.short, qty=positionSizePercent/100 * strategy.equity / close)
 
-// Exit Orders - Apply after entry to use entry price
-if strategy.position_size > 0 and (useStopLoss or useTakeProfit)
-    var float longEntryPrice = na
-    if strategy.position_size[1] == 0 and strategy.position_size > 0
-        longEntryPrice := strategy.position_avg_price
+// Store entry prices for exit calculations
+var float longEntryPrice = na
+var float shortEntryPrice = na
+
+if strategy.position_size[1] == 0 and strategy.position_size > 0
+    longEntryPrice := strategy.position_avg_price
     
+if strategy.position_size[1] == 0 and strategy.position_size < 0
+    shortEntryPrice := strategy.position_avg_price
+
+// Exit Orders - Apply after entry using entry price
+if strategy.position_size > 0 and (useStopLoss or useTakeProfit or useTrailingStop)
     longSL = useStopLoss ? longEntryPrice * (1 - stopLossPercent/100) : na
     longTP = useTakeProfit ? longEntryPrice * (1 + takeProfitPercent/100) : na
-    trailPoints = useTrailingStop ? longEntryPrice * trailingStopPercent/100 / syminfo.mintick : na
-    trailOffset = useTrailingStop ? trailPoints * 0.5 : na
     
-    strategy.exit("Long Exit", "Long", 
-                 stop=longSL, 
-                 limit=longTP, 
-                 trail_points=trailPoints,
-                 trail_offset=trailOffset)
+    // Trailing stop uses price distance from entry
+    if useTrailingStop
+        trailStop = longEntryPrice * (1 - trailingStopPercent/100)
+        strategy.exit("Long Exit", "Long", stop=longSL, limit=longTP, trail_price=trailStop)
+    else
+        strategy.exit("Long Exit", "Long", stop=longSL, limit=longTP)
 
-if strategy.position_size < 0 and (useStopLoss or useTakeProfit)
-    var float shortEntryPrice = na
-    if strategy.position_size[1] == 0 and strategy.position_size < 0
-        shortEntryPrice := strategy.position_avg_price
-    
+if strategy.position_size < 0 and (useStopLoss or useTakeProfit or useTrailingStop)
     shortSL = useStopLoss ? shortEntryPrice * (1 + stopLossPercent/100) : na
     shortTP = useTakeProfit ? shortEntryPrice * (1 - takeProfitPercent/100) : na
-    trailPoints = useTrailingStop ? shortEntryPrice * trailingStopPercent/100 / syminfo.mintick : na
-    trailOffset = useTrailingStop ? trailPoints * 0.5 : na
     
-    strategy.exit("Short Exit", "Short", 
-                 stop=shortSL, 
-                 limit=shortTP,
-                 trail_points=trailPoints,
-                 trail_offset=trailOffset)
+    // Trailing stop uses price distance from entry
+    if useTrailingStop
+        trailStop = shortEntryPrice * (1 + trailingStopPercent/100)
+        strategy.exit("Short Exit", "Short", stop=shortSL, limit=shortTP, trail_price=trailStop)
+    else
+        strategy.exit("Short Exit", "Short", stop=shortSL, limit=shortTP)
 
 // Manual Exit Conditions
 if longExitCondition and strategy.position_size > 0
@@ -170,15 +159,15 @@ plotshape(longCondition, "Long Entry", shape.triangleup, location.belowbar,
 plotshape(shortCondition, "Short Entry", shape.triangledown, location.abovebar, 
           color=color.new(color.red, 0), size=size.normal)
 
-// Plot Stop Loss and Take Profit levels
-plot(strategy.position_size > 0 ? longStopLoss : na, "Long SL", color=color.new(color.red, 0), 
-     style=plot.style_linebr, linewidth=2)
-plot(strategy.position_size > 0 ? longTakeProfit : na, "Long TP", color=color.new(color.green, 0), 
-     style=plot.style_linebr, linewidth=2)
-plot(strategy.position_size < 0 ? shortStopLoss : na, "Short SL", color=color.new(color.red, 0), 
-     style=plot.style_linebr, linewidth=2)
-plot(strategy.position_size < 0 ? shortTakeProfit : na, "Short TP", color=color.new(color.green, 0), 
-     style=plot.style_linebr, linewidth=2)
+// Plot Stop Loss and Take Profit levels based on entry price
+plot(strategy.position_size > 0 and useStopLoss ? longEntryPrice * (1 - stopLossPercent/100) : na, 
+     "Long SL", color=color.new(color.red, 0), style=plot.style_linebr, linewidth=2)
+plot(strategy.position_size > 0 and useTakeProfit ? longEntryPrice * (1 + takeProfitPercent/100) : na, 
+     "Long TP", color=color.new(color.green, 0), style=plot.style_linebr, linewidth=2)
+plot(strategy.position_size < 0 and useStopLoss ? shortEntryPrice * (1 + stopLossPercent/100) : na, 
+     "Short SL", color=color.new(color.red, 0), style=plot.style_linebr, linewidth=2)
+plot(strategy.position_size < 0 and useTakeProfit ? shortEntryPrice * (1 - takeProfitPercent/100) : na, 
+     "Short TP", color=color.new(color.green, 0), style=plot.style_linebr, linewidth=2)
 
 // Background Color for Trend
 bgcolor(fastMA > slowMA ? color.new(color.green, 95) : color.new(color.red, 95))
