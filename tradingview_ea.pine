@@ -1,0 +1,166 @@
+//@version=5
+strategy("Ichimoku Multi-Kijun EA", overlay=true, default_qty_type=strategy.percent_of_equity, default_qty_value=10)
+
+// ============================================================================
+// INPUT PARAMETERS
+// ============================================================================
+
+// Basic Ichimoku Settings (9, 26, 52, 26)
+tenkan_period = input.int(9, "Tenkan-sen Period", minval=1, group="Ichimoku Basic")
+kijun_period = input.int(26, "Kijun-sen Period", minval=1, group="Ichimoku Basic")
+senkou_span_b_period = input.int(52, "Senkou Span B Period", minval=1, group="Ichimoku Basic")
+displacement = input.int(26, "Displacement", minval=1, group="Ichimoku Basic")
+
+// Additional Kijun Periods
+kijun_65_period = input.int(65, "Kijun 65 Period", minval=1, group="Additional Kijun")
+kijun_129_period = input.int(129, "Kijun 129 Period", minval=1, group="Additional Kijun")
+kijun_172_period = input.int(172, "Kijun 172 Period", minval=1, group="Additional Kijun")
+kijun_234_period = input.int(234, "Kijun 234 Period", minval=1, group="Additional Kijun")
+
+// SMMA Periods
+smma_52_period = input.int(52, "SMMA 52 Period", minval=1, group="SMMA")
+smma_139_period = input.int(139, "SMMA 139 Period", minval=1, group="SMMA")
+smma_400_period = input.int(400, "SMMA 400 Period", minval=1, group="SMMA")
+
+// Risk Management
+use_stop_loss = input.bool(true, "Use Stop Loss", group="Risk Management")
+stop_loss_percent = input.float(2.0, "Stop Loss %", minval=0.1, maxval=10, step=0.1, group="Risk Management")
+use_take_profit = input.bool(true, "Use Take Profit", group="Risk Management")
+take_profit_percent = input.float(4.0, "Take Profit %", minval=0.1, maxval=20, step=0.1, group="Risk Management")
+
+// Trading Settings
+trade_long = input.bool(true, "Enable Long Trades", group="Trading")
+trade_short = input.bool(true, "Enable Short Trades", group="Trading")
+
+// ============================================================================
+// CUSTOM FUNCTIONS
+// ============================================================================
+
+// Donchian Channel function (for Ichimoku lines)
+donchian(length) =>
+    math.avg(ta.lowest(low, length), ta.highest(high, length))
+
+// SMMA (Smoothed Moving Average) function
+smma(src, length) =>
+    var float smma_val = na
+    smma_val := na(smma_val) ? ta.sma(src, length) : (smma_val * (length - 1) + src) / length
+    smma_val
+
+// ============================================================================
+// ICHIMOKU BASIC CALCULATION
+// ============================================================================
+
+// Tenkan-sen (Conversion Line): (9-period high + 9-period low) / 2
+tenkan = donchian(tenkan_period)
+
+// Kijun-sen (Base Line): (26-period high + 26-period low) / 2
+kijun = donchian(kijun_period)
+
+// Senkou Span A (Leading Span A): (Tenkan-sen + Kijun-sen) / 2
+senkou_span_a = math.avg(tenkan, kijun)
+
+// Senkou Span B (Leading Span B): (52-period high + 52-period low) / 2
+senkou_span_b = donchian(senkou_span_b_period)
+
+// Chikou Span (Lagging Span): Close plotted 26 periods in the past
+chikou = close
+
+// ============================================================================
+// ADDITIONAL KIJUN LINES CALCULATION
+// ============================================================================
+
+kijun_65 = donchian(kijun_65_period)
+kijun_129 = donchian(kijun_129_period)
+kijun_172 = donchian(kijun_172_period)
+kijun_234 = donchian(kijun_234_period)
+
+// ============================================================================
+// SMMA CALCULATION
+// ============================================================================
+
+smma_52 = smma(close, smma_52_period)
+smma_139 = smma(close, smma_139_period)
+smma_400 = smma(close, smma_400_period)
+
+// ============================================================================
+// TRADING CONDITIONS
+// ============================================================================
+
+// Bullish Conditions
+tenkan_kijun_bullish = ta.crossover(tenkan, kijun)
+price_above_cloud = close > senkou_span_a[displacement] and close > senkou_span_b[displacement]
+chikou_above_price = chikou > close[displacement]
+
+// Bearish Conditions
+tenkan_kijun_bearish = ta.crossunder(tenkan, kijun)
+price_below_cloud = close < senkou_span_a[displacement] and close < senkou_span_b[displacement]
+chikou_below_price = chikou < close[displacement]
+
+// Entry Signals
+long_condition = trade_long and tenkan_kijun_bullish and price_above_cloud
+short_condition = trade_short and tenkan_kijun_bearish and price_below_cloud
+
+// ============================================================================
+// EXECUTE TRADES
+// ============================================================================
+
+// Long Position
+if long_condition
+    entry_price = close
+    strategy.entry("Long", strategy.long)
+    if use_stop_loss and use_take_profit
+        stop_loss_price = entry_price * (1 - stop_loss_percent / 100)
+        take_profit_price = entry_price * (1 + take_profit_percent / 100)
+        strategy.exit("Long Exit", "Long", stop=stop_loss_price, limit=take_profit_price)
+    else if use_stop_loss
+        stop_loss_price = entry_price * (1 - stop_loss_percent / 100)
+        strategy.exit("Long Exit", "Long", stop=stop_loss_price)
+    else if use_take_profit
+        take_profit_price = entry_price * (1 + take_profit_percent / 100)
+        strategy.exit("Long Exit", "Long", limit=take_profit_price)
+
+// Short Position
+if short_condition
+    entry_price = close
+    strategy.entry("Short", strategy.short)
+    if use_stop_loss and use_take_profit
+        stop_loss_price = entry_price * (1 + stop_loss_percent / 100)
+        take_profit_price = entry_price * (1 - take_profit_percent / 100)
+        strategy.exit("Short Exit", "Short", stop=stop_loss_price, limit=take_profit_price)
+    else if use_stop_loss
+        stop_loss_price = entry_price * (1 + stop_loss_percent / 100)
+        strategy.exit("Short Exit", "Short", stop=stop_loss_price)
+    else if use_take_profit
+        take_profit_price = entry_price * (1 - take_profit_percent / 100)
+        strategy.exit("Short Exit", "Short", limit=take_profit_price)
+
+// ============================================================================
+// PLOTTING
+// ============================================================================
+
+// Plot Basic Ichimoku
+plot(tenkan, "Tenkan-sen", color=color.red, linewidth=1)
+plot(kijun, "Kijun-sen", color=color.blue, linewidth=1)
+
+// Plot Senkou Span (Cloud)
+p1 = plot(senkou_span_a[displacement], "Senkou Span A", color=color.green, offset=displacement)
+p2 = plot(senkou_span_b[displacement], "Senkou Span B", color=color.red, offset=displacement)
+fill(p1, p2, color=senkou_span_a > senkou_span_b ? color.new(color.green, 90) : color.new(color.red, 90), title="Kumo (Cloud)")
+
+// Plot Chikou Span
+plot(chikou, "Chikou Span", color=color.purple, linewidth=1, offset=-displacement)
+
+// Plot Additional Kijun Lines
+plot(kijun_65, "Kijun 65", color=color.black, linewidth=2)
+plot(kijun_129, "Kijun 129", color=color.blue, linewidth=2)
+plot(kijun_172, "Kijun 172", color=color.green, linewidth=2)
+plot(kijun_234, "Kijun 234", color=color.orange, linewidth=2)
+
+// Plot SMMA Lines
+plot(smma_52, "SMMA 52", color=color.rgb(255, 0, 255), linewidth=2, style=plot.style_line)
+plot(smma_139, "SMMA 139", color=color.rgb(0, 255, 255), linewidth=2, style=plot.style_line)
+plot(smma_400, "SMMA 400", color=color.rgb(255, 255, 0), linewidth=2, style=plot.style_line)
+
+// Plot Buy/Sell Signals
+plotshape(long_condition, "Buy Signal", shape.triangleup, location.belowbar, color.green, size=size.normal)
+plotshape(short_condition, "Sell Signal", shape.triangledown, location.abovebar, color.red, size=size.normal)
